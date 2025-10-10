@@ -5,13 +5,13 @@ use Psr\Http\Message\ServerRequestInterface as Request; // Importar la interfaz 
 
 require_once __DIR__ . "/../../Config/Database.php";
 
-return function ($app, $JWT){
+return function ($app){
     // chequeada
     $app->post('/court', function($request, $response){
-        $user = $request->getAttribute('jwt');
+        $user = $request->getAttribute('user');
         $data = json_decode($request->getBody(), true);
 
-        if((int) $user->admin === 0){
+        if((int) $user->is_admin === 0){
             $response->getBody()->write(json_encode(['error' => 'requiere ser administrador']));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400); //bad request            
         }
@@ -29,7 +29,7 @@ return function ($app, $JWT){
             Helpers::agregarTiempoToken($user->sub);
 
             if ($usado){
-                $response->getBody()->write(json_encode(['error' => "El nombre seleccionado ya esta en uso"]));
+                $response->getBody()->write(json_encode(['error' => "El nombre ingresado ya esta en uso"]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(409); // conflict
             }
 
@@ -46,15 +46,15 @@ return function ($app, $JWT){
         $response->getBody()->write(json_encode(['message' => 'cancha creada con exito']));
         return $response->withHeader('Content-Type', 'application/json')->withStatus(200); // ok
 
-    })->add($JWT);
+    })->add(new MiddlewareAuth());
 
     // chequeada
     $app->put('/court/{courtID}', function($request, $response, Array $args){
-        $user = $request->getAttribute('jwt');
+        $user = $request->getAttribute('user');
         $courtID = $args['courtID'];
         $datos = json_decode($request->getBody(), true);
 
-        $admin = (bool) $user->admin;
+        $admin = (bool) $user->is_admin;
 
         if (!$admin){
             $response->getBody()->write(json_encode(['error' => 'requiere ser un usuario administrador']));
@@ -77,6 +77,15 @@ return function ($app, $JWT){
             $pdo = Database::getConnection();
 
             Helpers::agregarTiempoToken($user->sub);
+
+            $stmt = $pdo->prepare('SELECT id FROM courts WHERE id = ?');
+            $stmt->execute([$courtID]);
+            $existe = (bool) $stmt->fetchColumn();
+
+            if (!$existe){
+                $response->getBody()->write(json_encode(['error' => 'la cancha no existe );']));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400); 
+            }
 
             if (trim($nombre) !== ""){
                 
@@ -112,15 +121,15 @@ return function ($app, $JWT){
         $response->getBody()->write(json_encode(['message' => 'cancha actualizada con exito']));
         return $response->withHeader('Content-Type', 'application/json')->withStatus(200); // ok
 
-    })->add($JWT);
+    })->add(new MiddlewareAuth());
 
     // chequeado
     $app->delete('/court/{courtID}', function($request, $response, Array $args){
 
-        $user = $request->getAttribute('jwt');
+        $user = $request->getAttribute('user');
         $courtID = $args['courtID'];
 
-        if((int) $user->admin === 0){
+        if((int) $user->is_admin === 0){
             $response->getBody()->write(json_encode(['error' => 'requiere ser administrador']));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400); //bad request            
         }
@@ -130,6 +139,15 @@ return function ($app, $JWT){
             $pdo = Database::getConnection();
 
             Helpers::agregarTiempoToken($user->sub);
+
+            $stmt = $pdo->prepare('SELECT id FROM courts WHERE id = ?');
+            $stmt->execute([$courtID]);
+            $existe = (bool) $stmt->fetchColumn();
+
+            if (!$existe){
+                $response->getBody()->write(json_encode(['error' => 'la cancha no existe );']));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400); 
+            }
 
             $stmt = $pdo->prepare('SELECT 1 FROM bookings b WHERE court_id = ? ');
             $stmt->execute([$courtID]);
@@ -153,11 +171,11 @@ return function ($app, $JWT){
         $response->getBody()->write(json_encode(['message' => 'cancha eliminada con exito']));
         return $response->withHeader('Content-Type', 'application/json')->withStatus(200); // ok
 
-    })->add($JWT);
+    })->add(new MiddlewareAuth());
 
     // chequeado
     $app->get('/court/{courtID}', function($request, $response, Array $args){
-        $user = $request->getAttribute('jwt');
+        $user = $request->getAttribute('user');
         $courtID = $args['courtID'];
 
         try {
@@ -188,6 +206,6 @@ return function ($app, $JWT){
         ]));
         return $response->withHeader('Content-Type', 'application/json')->withStatus(200); // ok
 
-    })->add($JWT);
+    })->add(new MiddlewareAuth());
 
 };

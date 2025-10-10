@@ -34,25 +34,17 @@ class Helpers {
         try {
             $pdo = Database::getConnection();
 
-            $stmt = $pdo->prepare('SELECT email, is_admin FROM users WHERE id = ?');
+            $stmt = $pdo->prepare('SELECT email, is_admin, expired FROM users WHERE id = ?');
             $stmt->execute([$userID]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
             date_default_timezone_set('America/Argentina/Buenos_Aires'); // para definir zona horaria
-            $expMas = time() + 300;
+            $expMas = new DateTime($user['expired']);
+            $expMas->modify('+5 minutes');
+            $fechaNueva = $expMas->format('Y-m-d H:i:s');
 
-            $key = "secret_password_no_copy";
-
-            $payload = [
-                'admin' => $user['is_admin'],
-                'sub' => $userID,
-                'correo' => $user['email'],
-                'exp' => $expMas
-            ];
-            $jwt = JWT::encode($payload, $key, 'HS256');
-
-            $stmt = $pdo->prepare('UPDATE users SET token = ?, expired = ? WHERE id = ?');
-            $stmt->execute([$jwt, date('Y-m-d H:i:s', $expMas), $userID]);
+            $stmt = $pdo->prepare('UPDATE users SET expired = ? WHERE id = ?');
+            $stmt->execute([$fechaNueva, $userID]);
         } catch (PDOException $e){
             error_log("Fallo interno" . $e->getMessage());
             

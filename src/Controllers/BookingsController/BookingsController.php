@@ -7,10 +7,10 @@ require_once __DIR__ . "/../../Config/Database.php";
 
 
 
-return function ($app, $JWT){
+return function ($app){
 
     $app->post('/booking', function($request, $response){
-        $user = $request->getAttribute('jwt');
+        $user = $request->getAttribute('user');
 
         $data = json_decode($request->getBody(), true);
 
@@ -85,7 +85,7 @@ return function ($app, $JWT){
         $response->getBody()->write(json_encode(['message' => 'reserva creada con exito!!']));
         return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
 
-    })->add($JWT);
+    })->add(new MiddlewareAuth());
 
 
     $app->delete('/booking/{id}', function($request, $response, $args){
@@ -123,7 +123,7 @@ return function ($app, $JWT){
         $response->getBody()->write(json_encode(['message' => 'reserva eliminada']));
         return $response->withHeader('Content-Type', 'application/json')->withStatus(200); 
 
-    })->add($JWT);
+    })->add(new MiddlewareAuth());
 
 
     $app->get('/booking', function($request, $response){

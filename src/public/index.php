@@ -24,11 +24,9 @@ $app->add(function ($request, $handler) {
 
 $app->addErrorMiddleware(true, true, true);
 
-require_once __DIR__ . '/../Middleware/JWTMiddleware.php';
-$JWT = new JWTmiddleware("secret_password_no_copy");
 
 // Rutas
-(require __DIR__ . '/../routes/routes.php')($app, $JWT);
+(require __DIR__ . '/../routes/routes.php')($app);
 
 // Ruta simple de prueba
 $app->get('/', function (Request $request, Response $response) {

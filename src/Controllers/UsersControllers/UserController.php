@@ -4,10 +4,10 @@ use Psr\Http\Message\ResponseInterface as Response; // Importar la interfaz de r
 use Psr\Http\Message\ServerRequestInterface as Request; // Importar la interfaz de solicitud de PSR
 
 require_once __DIR__ . "/../../Config/Database.php";
-
+require_once __DIR__ . "/../../Middleware/MiddlewareAuth.php";
 require_once __DIR__ . "/../../Helpers/Helpers.php";
 
-return function ($app, $JWT) {
+return function ($app) {
 
     //Registrar un usuario (chequeado)
     $app->post('/users', function($request, $response){
@@ -58,7 +58,7 @@ return function ($app, $JWT) {
 
             $hashed_password = password_hash($contraseña, PASSWORD_BCRYPT);
             $stmt = $pdo->prepare("INSERT INTO users (email, first_name, last_name, password, is_admin ) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$correo, $primerNombre, $segundoNombre, $hashed_password, 1]);
+            $stmt->execute([$correo, $primerNombre, $segundoNombre, $hashed_password, 0]);
             $response->getBody()->write(json_encode(['message' => 'Usuario cargado con exito']));
 
             $pdo = null;
@@ -95,22 +95,16 @@ return function ($app, $JWT) {
 
             date_default_timezone_set('America/Argentina/Buenos_Aires'); // para definir zona horaria
             $expira = time() + 300;
-            $key = "secret_password_no_copy";
-            $payload = [
-                'admin' => $users['is_admin'],
-                'sub' => $users['id'],
-                'correo' => $users['email'],
-                'exp' => $expira
-            ];
-            $jwt = JWT::encode($payload, $key, 'HS256');
 
+
+            $token = bin2hex(random_bytes(32));
             $stmt = $pdo->prepare('UPDATE users SET token = ?, expired = ? WHERE email = ?');
-            $stmt->execute([$jwt, date('Y-m-d H:i:s', $expira), $users['email']]);
+            $stmt->execute([$token, date('Y-m-d H:i:s', $expira), $users['email']]);
 
             $pdo = null;
 
             $response->getBody()->write
-            (json_encode(["token" => $jwt, "expira" => date('Y-m-d H:i:s', $expira), "usuario" => $users['email']]));
+            (json_encode(["token" => $token, "expira" => date('Y-m-d H:i:s', $expira), "usuario" => $users['email']]));
             
             return $response->withHeader('Content-Type', 'Application/json')->withStatus(200); // ok
         } catch (PDOException $e) {
@@ -121,7 +115,7 @@ return function ($app, $JWT) {
 
     // cerrar sesion (chequeado)
     $app->post('/logout', function($request, $response) {
-        $user = $request->getAttribute('jwt');
+        $user = $request->getAttribute('user');
 
         $userID = $user->sub;
 
@@ -137,11 +131,11 @@ return function ($app, $JWT) {
             $response->getBody()->write(json_encode(['error' => 'fallo en la conexion a la base de datos', 'detalles' => $e->getMessage()]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500); // error interno
         }
-    })->add($JWT);
+    })->add(new MiddlewareAuth());
 
     // modificar datos de un usuario (chequeado)
     $app->patch('/user/{id}', function($request, $response, $args){
-        $user = $request->getAttribute('jwt');
+        $user = $request->getAttribute('user');
         $data = $request->getParsedBody();
         $idModificar = $args['id'];
 
@@ -154,33 +148,40 @@ return function ($app, $JWT) {
         $primer_nombre = $data['firstName'] ?? "";
         $ultimo_nombre = $data['lastName'] ?? "";
         $contraseña = $data['password'] ?? "";
-        $email = $data['email'] ?? "";
 
-        if (trim($primer_nombre) === "" && trim($ultimo_nombre) === "" && trim($contraseña) === "" && trim($email) === ""){
+        if (trim($primer_nombre) === "" && trim($ultimo_nombre) === "" && trim($contraseña) === ""){
             $response->getBody()->write(json_encode(['error' => 'no se han proporcionado datos para modificar']));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400); // bad request;
         }
         // estos arreglos se usaran para armar la consulta UPDATE
         $campos = [];
         $valores = [];
-        $jwt = null;
 
         try {
             $pdo = Database::getConnection();
 
             Helpers::agregarTiempoToken($userID);
 
+            $stmt = $pdo->prepare('SELECT id FROM users WHERE id = ?');
+            $stmt->execute([$idModificar]);
+            $existe = (bool) $stmt->fetchColumn();
+
+            if (!$existe){
+                $response->getBody()->write(json_encode(['error' =>  'El usuario no existe']));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404); // bad request
+            }
+
             // chequear si es el mismo usuario que se quiere modificar o si es un administrador
             $stmt = $pdo->prepare('SELECT is_admin FROM users WHERE id = ?');
             $stmt->execute([$userID]);
             $admin = (bool) $stmt->fetchColumn();
 
-            if (!$admin && $userID !== $idModificar){
+            if (!$admin && $userID !== $idModificar ){
                 $response->getBody()->write(json_encode(['error' => 'no eres administrador ni el usuario al que se quiere modificar']));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(401); //unauthorized
             }
 
-            //a partir de aca seran todos if viendo que pingo quiere actualizar el usuario
+            //a partir de aca seran todos if viendo que quiere actualizar el usuario
 
             if (trim($primer_nombre) !== ""){
                 if (!Helpers::validarNombre($primer_nombre)){
@@ -208,23 +209,7 @@ return function ($app, $JWT) {
 
                 $campos[] = "password = ?";
                 $valores[] = password_hash($contraseña, PASSWORD_BCRYPT);
-            }
-
-            if (trim($email) !== ""){
-                if (!Helpers::validarCorreo($contraseña)){
-                    $response->getBody()->write(json_encode(["error" => "El correo solo puede contener letras, numeros y debe haber un @ . _."]));
-                    return $response->withHeader('Content-Type', 'application/json')->withStatus(400); // bad request
-                }
-                $stmt = $pdo->prepare('SELECT email FROM users WHERE email = ?');
-                $stmt->execute([trim($email)]);
-                $existe = (bool) $stmt->fetchColumn();
-                if ($existe){
-                    $response->getBody()->write(json_encode(['error' => 'El correo ya esta asociado a alguna cuenta']));
-                    return $response->withHeader('Content-Type', 'application/json')->withStatus(400); // bad request
-                }
-                $campos[] = "email = ?";
-                $valores[] = trim($email);
-            }
+            };
 
             $valores[] = $idModificar;
 
@@ -240,28 +225,37 @@ return function ($app, $JWT) {
         $pdo = null;
         $response->getBody()->write(json_encode(["message" => "Usuario actualizado con exito"]));
         return $response->withHeader('Content-Type', 'application/json')->withStatus(200); // ok
-    })->add($JWT);
+    })->add(new MiddlewareAuth());
 
 
     // chequeado
     $app->get('/bienvenida', function (Request $request, Response $response)  {
-        $user = $request->getAttribute('jwt');
+        $user = $request->getAttribute('user');
         $response->getBody()->write(json_encode([
-            'mensaje' => 'Bienvenido ' . $user->correo . ' con ID ' . $user->sub,
+            'mensaje' => 'Bienvenido ' . $user->email . ' con ID ' . $user->sub,
         ]));
         return $response->withHeader('Content-Type', 'application/json');
-    })->add($JWT);
+    })->add(new MiddlewareAuth());
 
 
 
     // chequeado
     $app->delete('/user/{id}', function($request, $response, $args){
-        $user = $request->getAttribute('jwt');
+        $user = $request->getAttribute('user');
         $userID = $user->sub;
         $idEliminar = $args['id'];
 
         try {
             $pdo = Database::getConnection();
+
+            $stmt = $pdo->prepare('SELECT id FROM users WHERE id = ?');
+            $stmt->execute([$idEliminar]);
+            $existe = (bool) $stmt->fetchColumn();
+
+            if (!$existe){
+                $response->getBody()->write(json_encode(['error' =>  'El usuario no existe']));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400); // bad request
+            }
 
             $stmt = $pdo->prepare('SELECT is_admin FROM users WHERE id = ?');
             $stmt->execute([$userID]);
@@ -310,11 +304,11 @@ return function ($app, $JWT) {
 
         }
 
-    })->add($JWT);
+    })->add(new MiddlewareAuth());
 
     // chequeado
     $app->get('/user/{id}', function (Request $request, Response $response, $args)  {
-        $user = $request->getAttribute('jwt');
+        $user = $request->getAttribute('user');
         $id = $args['id'];
 
         try {
@@ -322,7 +316,7 @@ return function ($app, $JWT) {
 
             Helpers::agregarTiempoToken($user->sub);
 
-            $stmt = $pdo->prepare('SELECT first_name, last_name, password, is_admin FROM users WHERE id = ?');
+            $stmt = $pdo->prepare('SELECT first_name, last_name, is_admin, email, expired FROM users WHERE id = ?');
             $stmt->execute([$id]);
             $datos = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -340,16 +334,16 @@ return function ($app, $JWT) {
             'informacion del usuario recuperada',
             "primer nombre" => $datos['first_name'],
             "segundo nombre" => $datos['last_name'],
-            "correo electronico" => $user->correo,
-            "contraseña" => $datos['password'],
+            "correo electronico" => $datos['email'],
+            "el token expira en la fecha" => $datos['expired'],
             "administrador" => $admin
         ]));
         return $response->withHeader('Content-Type', 'application/json');
-    })->add($JWT);
+    })->add(new MiddlewareAuth());
 
     // chequeado
     $app->get('/users', function ($request, $response){
-        $user = $request->getAttribute('jwt');
+        $user = $request->getAttribute('user');
         $texto = $args['text'] ?? '';
 
         try {
@@ -387,5 +381,5 @@ return function ($app, $JWT) {
             "administrador :" => $admin
         ]));
         return $response->withHeader('Content-Type', 'application/json')->withStatus(200); // ok
-    })->add($JWT);
+    })->add(new MiddlewareAuth());
 };
