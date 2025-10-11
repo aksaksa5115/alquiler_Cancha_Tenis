@@ -53,7 +53,7 @@ return function ($app) {
 
             if($stmt->fetch()) {
                 $response->getBody()->write(json_encode(['error' => 'correo electronico ya existente']));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(401); //trolo
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(409); //conflict
             }
 
             $hashed_password = password_hash($contraseña, PASSWORD_BCRYPT);
@@ -168,7 +168,7 @@ return function ($app) {
 
             if (!$existe){
                 $response->getBody()->write(json_encode(['error' =>  'El usuario no existe']));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(404); // bad request
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404); //not found
             }
 
             // chequear si es el mismo usuario que se quiere modificar o si es un administrador
@@ -178,7 +178,7 @@ return function ($app) {
 
             if (!$admin && $userID !== $idModificar ){
                 $response->getBody()->write(json_encode(['error' => 'no eres administrador ni el usuario al que se quiere modificar']));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(401); //unauthorized
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403); //forbbiden
             }
 
             //a partir de aca seran todos if viendo que quiere actualizar el usuario
@@ -254,7 +254,7 @@ return function ($app) {
 
             if (!$existe){
                 $response->getBody()->write(json_encode(['error' =>  'El usuario no existe']));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(400); // bad request
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404); // not found
             }
 
             $stmt = $pdo->prepare('SELECT is_admin FROM users WHERE id = ?');
@@ -263,7 +263,7 @@ return function ($app) {
 
             if (!$admin && $userID !== $idEliminar){
                 $response->getBody()->write(json_encode(['error' => 'no eres administrador ni el usuario al que se quiere modificar']));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(401); //unauthorized
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403); //forbbiden
             }
             
             // chequear si es administrador
@@ -273,7 +273,7 @@ return function ($app) {
 
             if ($admin){
                 $response->getBody()->write(json_encode(['error' => 'no es posible eliminar administradores']));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(400); // bad request
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(409); //conflict
 
             }
 
@@ -288,7 +288,7 @@ return function ($app) {
 
             if ($reserva){
                 $response->getBody()->write(json_encode(['error' => 'el usuario esta en una o mas reservas']));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(400); // bad request
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(409); //conflict
             }
 
             $stmt = $pdo->prepare('DELETE FROM users WHERE id = ?');
@@ -320,6 +320,11 @@ return function ($app) {
             $stmt->execute([$id]);
             $datos = $stmt->fetch(PDO::FETCH_ASSOC);
 
+            if (!$datos){
+                $response->getBody()->write(json_encode(["error" => "el usuario no existe"]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
             $admin = "no";
             if ($datos['is_admin']){
                 $admin = "si";
@@ -327,7 +332,7 @@ return function ($app) {
 
         } catch (PDOException $e){
             $response->getBody()->write(json_encode(["error" => "fallo interno en la base de datos", "detalles" => $e->getMessage()]));
-            return $response->withHeader('Content-Type', 'application/json');
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
         
         $response->getBody()->write(json_encode([
@@ -338,12 +343,13 @@ return function ($app) {
             "el token expira en la fecha" => $datos['expired'],
             "administrador" => $admin
         ]));
-        return $response->withHeader('Content-Type', 'application/json');
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
     })->add(new MiddlewareAuth());
 
     // chequeado
     $app->get('/users', function ($request, $response){
         $user = $request->getAttribute('user');
+        $args = $request->getQueryParams();
         $texto = $args['text'] ?? '';
 
         try {
@@ -353,33 +359,38 @@ return function ($app) {
 
             $query = 'SELECT first_name, last_name, email, is_admin FROM users WHERE 1 = 1';
             if ($texto !== ''){
-                $query .= ' AND first_name LIKE ? OR last_name LIKE ? OR email LIKE ?';
-                
+                $query .= ' AND (first_name LIKE ? OR last_name LIKE ? OR email LIKE ?)';
+                $texto = "%$texto%";                
                 $stmt = $pdo->prepare($query);
                 $stmt->execute([$texto, $texto, $texto]);
             } else {
                 $stmt = $pdo->prepare($query);
                 $stmt->execute();
             }
-            $datos = $stmt->fetch(PDO::FETCH_ASSOC);
-            $admin = "no";
-            if ($datos['is_admin']){
-                $admin = "si";
-            }
+            $datos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $pdo = null;
+            if (!$datos){
+                $response->getBody()->write(json_encode(["message" => "no se encontraron coincidencias"]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+            }
         } catch (PDOException $e){
             $response->getBody()->write(json_encode(["error" => "fallo interno en la base de datos", "detalles" => $e->getMessage()]));
-            return $response->withHeader('Content-Type', 'application/json');
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+        $pdo = null;
+
+        foreach($datos as $d){
+            $resultado[] = [
+            "mail del usuario" => $d['email'],
+            "primer nombre del usuario" => $d['first_name'],
+            "ultimo nombre del usuario" => $d['last_name'],
+            "el usuario es administrador?" => $d['is_admin'],
+            "palabra clave usada" => $texto
+            ];
+            
         }
 
-        $response->getBody()->write(json_encode([
-            "Resultado: " => "Información de usuarios obtenida!! ",
-            "primer nombre :" => $datos['first_name'],
-            "ultimo nombre :" => $datos['last_name'],
-            "correo electronico :" => $datos['email'],
-            "administrador :" => $admin
-        ]));
+        $response->getBody()->write(json_encode([$resultado]));
         return $response->withHeader('Content-Type', 'application/json')->withStatus(200); // ok
     })->add(new MiddlewareAuth());
 };

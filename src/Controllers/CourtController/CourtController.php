@@ -13,7 +13,7 @@ return function ($app){
 
         if((int) $user->is_admin === 0){
             $response->getBody()->write(json_encode(['error' => 'requiere ser administrador']));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(400); //bad request            
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403); //forbbidn            
         }
         if (!$data || !isset($data['name']) || !isset($data['description'])){
             $response->getBody()->write(json_encode(['error' => 'faltan datos']));
@@ -84,7 +84,7 @@ return function ($app){
 
             if (!$existe){
                 $response->getBody()->write(json_encode(['error' => 'la cancha no existe );']));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(400); 
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404); 
             }
 
             if (trim($nombre) !== ""){
@@ -131,7 +131,7 @@ return function ($app){
 
         if((int) $user->is_admin === 0){
             $response->getBody()->write(json_encode(['error' => 'requiere ser administrador']));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(400); //bad request            
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403); //forbbiden            
         }
 
         try {
@@ -146,7 +146,7 @@ return function ($app){
 
             if (!$existe){
                 $response->getBody()->write(json_encode(['error' => 'la cancha no existe );']));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(400); 
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404); 
             }
 
             $stmt = $pdo->prepare('SELECT 1 FROM bookings b WHERE court_id = ? ');
@@ -155,7 +155,7 @@ return function ($app){
 
             if ($existe){
                 $response->getBody()->write(json_encode(['error' => 'la cancha ya esta en alguna reserva']));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(409); // forbbiden
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(409); // conflict
             }
 
             $stmt = $pdo->prepare('DELETE FROM courts WHERE id = ?');
