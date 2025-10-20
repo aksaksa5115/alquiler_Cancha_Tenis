@@ -17,10 +17,10 @@ class Helpers {
 
     }
 
-    //el formato del nombre solo puede contener letras y no puede tener espacios
+    //el formato del nombre solo puede contener letras
     public static function validarNombre($nombre): bool {
 
-        return (preg_match('/^[a-zA-Z]{3,20}$/', $nombre));
+        return (preg_match('/^[a-zA-Z ]{3,20}$/', $nombre));
     }
 
     //el formato de la contraseña debe tener al menos 8 caracteres, al menos una letra mayúscula, al menos una letra minúscula,

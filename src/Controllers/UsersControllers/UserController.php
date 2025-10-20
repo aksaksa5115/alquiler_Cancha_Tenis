@@ -143,7 +143,7 @@ return function ($app) {
             $response->getBody()->write(json_encode(['error' => 'se requiere al menos un dato para modificar']));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400); // bad request
         }
-        $userID = $user->sub;
+        $userID = (int) $user->sub;
         //zona de variables
         $primer_nombre = $data['firstName'] ?? "";
         $ultimo_nombre = $data['lastName'] ?? "";
@@ -176,7 +176,7 @@ return function ($app) {
             $stmt->execute([$userID]);
             $admin = (bool) $stmt->fetchColumn();
 
-            if (!$admin && $userID !== $idModificar ){
+            if (!$admin && $userID !== (int) $idModificar ){
                 $response->getBody()->write(json_encode(['error' => 'no eres administrador ni el usuario al que se quiere modificar']));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(403); //forbbiden
             }
@@ -242,8 +242,8 @@ return function ($app) {
     // chequeado
     $app->delete('/user/{id}', function($request, $response, $args){
         $user = $request->getAttribute('user');
-        $userID = $user->sub;
-        $idEliminar = $args['id'];
+        $userID = (int) $user->sub;
+        $idEliminar = (int) $args['id'];
 
         try {
             $pdo = Database::getConnection();
@@ -350,7 +350,7 @@ return function ($app) {
     $app->get('/users', function ($request, $response){
         $user = $request->getAttribute('user');
         $args = $request->getQueryParams();
-        $texto = $args['text'] ?? '';
+        $texto = $args['search'] ?? '';
 
         try {
             $pdo = Database::getConnection();
