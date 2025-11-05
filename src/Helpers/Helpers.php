@@ -1,20 +1,11 @@
 <?php
 
 require_once __DIR__ . "/../Config/Database.php";
-
-use Firebase\JWT\JWT; // Importar la librería JWT de Firebase
 class Helpers {
 
     public static function validarCorreo($correo): bool {
 
         return (preg_match('/^[a-zA-Z0-9._]+@[a-zA-Z0-9._]+$/', $correo));
-    }
-
-    //el formato del username solo puede contener letras y numeros y no puede tener espacios
-    public static function validarUsername($username): bool {
-
-        return (preg_match('/^[a-zA-Z0-9]{1,20}$/', $username));
-
     }
 
     //el formato del nombre solo puede contener letras

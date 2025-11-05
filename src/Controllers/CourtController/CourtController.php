@@ -1,5 +1,4 @@
 <?php
-use Firebase\JWT\JWT; // Importar la librería JWT de Firebase
 use Psr\Http\Message\ResponseInterface as Response; // Importar la interfaz de respuesta de PSR
 use Psr\Http\Message\ServerRequestInterface as Request; // Importar la interfaz de solicitud de PSR
 
