@@ -207,4 +207,30 @@ return function ($app){
 
     })->add(new MiddlewareAuth());
 
+    $app->get('/courts', function($request, $response) {
+        try {
+            $pdo = Database::getConnection();
+
+            $stmt = $pdo->query("SELECT c.id, c.name, c.description, CASE WHEN COUNT(b.id) > 0 
+                                            THEN TRUE ELSE FALSE 
+                                            END AS has_reservations FROM courts c
+                                            LEFT JOIN bookings b ON b.court_id = c.id
+                                            GROUP BY c.id
+                                            ORDER BY c.name ASC;");
+            $canchas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $pdo = null;
+
+            $response->getBody()->write(json_encode($canchas));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+
+        } catch (PDOException $e) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Error al obtener canchas',
+                'detalles' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            }
+    });
+
 };

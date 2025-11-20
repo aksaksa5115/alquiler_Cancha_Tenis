@@ -103,12 +103,13 @@ return function ($app) {
             $pdo = null;
 
             $response->getBody()->write
-            (json_encode(["token" => $token, "expira" => date('Y-m-d H:i:s', $expira), "usuario" => $users['email']]));
+            (json_encode(["token" => $token, "expira" => date('Y-m-d H:i:s', $expira), 
+            "usuario" => $users['email'], "es admin" => (bool) $users['is_admin'], "id" => $users['id']]));
             
-            return $response->withHeader('Content-Type', 'Application/json')->withStatus(200); // ok
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(200); // ok
         } catch (PDOException $e) {
             $response->getBody()->write(json_encode(["error" => "fallo en la conexion a la base de datos", "detalle" => $e->getMessage()]));
-            return $response->withHeader('Content-Type', 'Application/json')->withStatus(500); // internal error
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500); // internal error
         }
     });
 
@@ -261,7 +262,7 @@ return function ($app) {
             $admin = (bool) $stmt->fetchColumn();
 
             if (!$admin && $userID !== $idEliminar){
-                $response->getBody()->write(json_encode(['error' => 'no eres administrador ni el usuario al que se quiere modificar']));
+                $response->getBody()->write(json_encode(['error' => 'no eres administrador ni el usuario al que se quiere eliminar']));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(403); //forbbiden
             }
             
@@ -315,7 +316,7 @@ return function ($app) {
 
             Helpers::agregarTiempoToken($user->sub);
 
-            $stmt = $pdo->prepare('SELECT first_name, last_name, is_admin, email, expired FROM users WHERE id = ?');
+            $stmt = $pdo->prepare('SELECT id, first_name, last_name, is_admin, email FROM users WHERE id = ?');
             $stmt->execute([$id]);
             $datos = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -324,24 +325,21 @@ return function ($app) {
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
 
-            $admin = "no";
-            if ($datos['is_admin']){
-                $admin = "si";
-            }
-
         } catch (PDOException $e){
             $response->getBody()->write(json_encode(["error" => "fallo interno en la base de datos", "detalles" => $e->getMessage()]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
         
         $response->getBody()->write(json_encode([
-            'informacion del usuario recuperada',
-            "primer nombre" => $datos['first_name'],
-            "segundo nombre" => $datos['last_name'],
-            "correo electronico" => $datos['email'],
-            "el token expira en la fecha" => $datos['expired'],
-            "administrador" => $admin
+            "user" => [
+                "id" => $datos['id'],
+                "first_name" => $datos['first_name'],
+                "last_name" => $datos['last_name'],
+                "email" => $datos['email'],
+                "is_admin" => $datos['is_admin'] ? "si" : "no"
+            ]
         ]));
+
         return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
     })->add(new MiddlewareAuth());
 
@@ -356,7 +354,7 @@ return function ($app) {
 
             Helpers::agregarTiempoToken($user->sub);
 
-            $query = 'SELECT first_name, last_name, email, is_admin FROM users WHERE 1 = 1';
+            $query = 'SELECT id, first_name, last_name, email, is_admin FROM users WHERE 1 = 1';
             if ($texto !== ''){
                 $query .= ' AND (first_name LIKE ? OR last_name LIKE ? OR email LIKE ?)';
                 $texto = "%$texto%";                
@@ -380,16 +378,17 @@ return function ($app) {
 
         foreach($datos as $d){
             $resultado[] = [
-            "mail del usuario" => $d['email'],
-            "primer nombre del usuario" => $d['first_name'],
-            "ultimo nombre del usuario" => $d['last_name'],
-            "el usuario es administrador?" => $d['is_admin'],
+            "id" => $d['id'],
+            "email" => $d['email'],
+            "first_name" => $d['first_name'],
+            "last_name" => $d['last_name'],
+            "is_admin" => $d['is_admin'],
             "palabra clave usada" => $texto
             ];
             
         }
 
-        $response->getBody()->write(json_encode([$resultado]));
+        $response->getBody()->write(json_encode($resultado));
         return $response->withHeader('Content-Type', 'application/json')->withStatus(200); // ok
     })->add(new MiddlewareAuth());
 };
