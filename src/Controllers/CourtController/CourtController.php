@@ -233,4 +233,62 @@ return function ($app){
             }
     });
 
+
+    $app->get('/courtsRanking', function($request, $response){
+        $args = $request->getQueryParams();
+        $Inicio = $args['fechaInicio'] ?? null;
+        $Fin = $args['fechaFin'] ?? null;
+
+        if ($Inicio === '') $Inicio = null;
+        if ($Fin === '') $Fin = null;
+
+        try {
+
+            $pdo = Database::getConnection();
+
+            $stmt = $pdo->prepare("SELECT c.name, COUNT(*) as cantReservas FROM courts c
+            LEFT JOIN bookings b ON b.court_id = c.id
+            WHERE (? IS NULL OR b.booking_datetime >= ?)
+            AND (? IS NULL OR b.booking_datetime <= ?)
+            GROUP BY c.name
+            ORDER BY cantReservas DESC");
+            $stmt->execute([$Inicio, $Inicio, $Fin, $Fin]);
+            $datos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            $response->getBody()->write(json_encode(['error' => 'error interno en la base de datos', 'detalles' => $e->getMessage()]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500); // internal error
+        }
+
+        $pdo = null;
+
+        $response->getBody()->write(json_encode($datos));
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+        
+    });
+
+    $app->get('/court/{idCourt}/bookings', function($request, $response, Array $args){
+        $courtId = $args['idCourt'];
+
+        try {
+            $pdo = Database::getConnection();
+
+            $stmt = $pdo->prepare('SELECT b.id, u.email, b.booking_datetime, b.duration_blocks FROM bookings b
+            INNER JOIN users u ON b.created_by = u.id
+            INNER JOIN courts c ON b.court_id = c.id
+            WHERE c.id = ?
+            ORDER BY b.booking_datetime DESC');
+            $stmt->execute([$courtId]);
+            $reservas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        } catch (PDOException $e){
+            $response->getBody()->write(json_encode(['error' => 'error interno en la base de datos', 'detalles' => $e->getMessage()]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500); // internal error
+        } 
+
+        $pdo = null;
+
+        $response->getBody()->write(json_encode($reservas));
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+    });
+
 };
